@@ -1,5 +1,4 @@
-# monoshine - Package list
-# Debian-based Termux distro with Thai language support
+# monoshine - Package list for Debian-based Termux distro
 
 # Base system
 bash
@@ -22,11 +21,13 @@ sensible-utils
 tar
 util-linux
 xz-utils
+zlib1g
 
 # Package management
 apt
 apt-utils
 ca-certificates
+debian-archive-keyring
 
 # Essential tools for Termux
 rsync
@@ -37,6 +38,9 @@ vim-tiny
 less
 tmux
 screen
+tree
+htop
+tree
 
 # Network and system tools
 iproute2
@@ -50,7 +54,6 @@ dnsutils
 
 # Thai language support
 locales
-locales-all
 thai-language-data
 libthai0
 libthai-dev
@@ -58,16 +61,22 @@ fonts-noto-core
 fonts-noto-extra
 fonts-noto-ui-core
 fonts-noto-ui-extra
+fonts-dejavu
+fonts-noto-mono
 console-setup
 console-data
 keyboard-configuration
+fontconfig
+libharfbuzz0b
+libharfbuzz-icu0b
 
 # Input method
 ibus
 ibus-libthai
-libharfbuzz-dev
+ibus-clutter
+ibus-gtk3
 
-# Security tools
+# Security tools (reduced set)
 nmap
 rkhunter
 lynis
@@ -77,6 +86,7 @@ nftables
 fail2ban
 clamav
 chkrootkit
+ca-certificates-utils
 
 # Development
 python3
@@ -84,9 +94,7 @@ python3-pip
 build-essential
 pkg-config
 
-# Utility
-htop
-tree
+# Archive tools
 unzip
 zip
 
