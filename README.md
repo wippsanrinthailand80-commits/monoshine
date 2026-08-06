@@ -1,44 +1,99 @@
-# MAD EL OS
+# monoshine
 
-A custom Arch Linux-based ISO with reduced cybersecurity tools and full Thai language support, including correct vowel positioning (no floating or sinking vowels).
+A Debian-based Termux distribution with Thai language support and security tools.
 
 ## Overview
 
-MAD EL OS provides:
+monoshine is a custom Debian rootfs designed for Termux on Android. It provides:
 
-- **Arch Linux base** - Rolling release, minimal base system
-- **Thai language support** - Locales, fonts, input methods, and proper text rendering
-- **Reduced security tools** - Only essential cybersecurity utilities
+- **Debian trixie** base (arm64/aarch64)
+- **Thai language support** - fonts, input methods, locales
+- **Security tools** - nmap, rkhunter, lynis, fail2ban, nftables
+- **Termux-optimized** - proot-friendly, no systemd dependency
 
-## Thai Language Support
+## Installation
 
-### Locale
-- `th_TH.UTF-8` is enabled and set as the default system locale
+In Termux:
 
-### Fonts
-- **Noto Sans Thai** - Primary font with proper OpenType `GPOS`/`GDEF` tables for correct mark positioning
-- **DejaVu Sans** - Fallback font with Thai glyph coverage
-- **Terminus** - Console font with Thai support
+```bash
+# Download the latest release
+curl -L https://github.com/monoshine/monoshine/releases/latest/download/monoshine-arm64.tar.xz -o monoshine.tar.xz
 
-### Text Rendering (No Floating/Sinking Vowels)
+# Extract and run
+proot-distro install monoshine
+proot-distro login monoshine
+```
 
-Thai script requires complex text shaping to position vowel signs and tone marks correctly around consonant bases. MAD EL OS ensures proper rendering through:
+Or using the standalone setup:
 
-1. **HarfBuzz** text shaping engine applies `GPOS` (Glyph Positioning) rules from the font
-2. **Fontconfig** configuration (`99-thai-render.conf`) ensures Thai text always uses fonts with proper OpenType support
-3. **Noto Sans Thai** contains proper `ccmp` (character composition), `mark` (mark-to-base), and `mkmk` (mark-to-mark) features
+```bash
+# Manual extraction
+mkdir -p ~/.local/share/proot-distro/installed/monoshine
+tar -xJf monoshine-arm64.tar.xz -C ~/.local/share/proot-distro/installed/monoshine
 
-This prevents the common issues of:
-- **Floating vowels** - Vowel signs positioned incorrectly above the baseline
-- **Sinking vowels** - Vowel signs positioned incorrectly below the baseline
-- **Misaligned tone marks** - MAITAIKHU, NIKHAHIT, and tone marks (U+0E48-U+0E4B) without proper stacking
+# Login
+proot-distro login monoshine
+```
 
-### Input Method
-- **Fcitx5** with **fcitx5-libthai** for predictive Thai text input
-- Thai keyboard layout (XKB) loaded at boot
-- Language toggle: Alt+Shift
+## Build
 
-## Security Tools (Reduced Set)
+```bash
+./build.sh
+```
+
+The build output is placed in `out/`.
+
+### Build Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEBIAN_ARCH` | `arm64` | Target architecture (arm64, armhf, amd64) |
+| `DEBIAN_SUITE` | `trixie` | Debian suite to bootstrap |
+| `OUTPUT_DIR` | `./out` | Output directory for tarball |
+
+### Prerequisites
+
+On Debian/Ubuntu:
+```bash
+sudo apt-get install debootstrap qemu-user-static xz-utils
+```
+
+## Testing
+
+### Automated Testing
+
+```bash
+# Run tests locally (requires debootstrap)
+DEBIAN_ARCH=arm64 ./build.sh
+```
+
+GitHub Actions runs automated tests on every push and pull request.
+
+### Manual Testing
+
+```bash
+# Extract and inspect
+tar -xJf out/monoshine-arm64.tar.xz -C /tmp/monoshine-test
+
+# Run a command in chroot (with qemu for cross-arch)
+chroot /tmp/monoshine-test /usr/local/bin/monoshine-info
+
+# Verify Thai locale
+chroot /tmp/monoshine-test locale
+```
+
+## Features
+
+### Thai Language Support
+
+- **Thai fonts**: Noto Sans Thai, Noto Sans Thai UI, DejaVu (fallback)
+- **Thai locale**: `th_TH.UTF-8` enabled and set as default
+- **Input methods**: ibus with ibus-libthai for predictive Thai text input
+- **Keyboard layout**: Thai XKB layout
+- **Font rendering**: Proper Thai vowel positioning via fontconfig + HarfBuzz
+- **Console**: Terminus font with Thai glyph support
+
+### Security Tools
 
 | Tool | Purpose |
 |------|---------|
@@ -46,95 +101,42 @@ This prevents the common issues of:
 | rkhunter | Rootkit detection |
 | lynis | Security auditing and system hardening |
 | gnupg | Encryption and signing |
-| openssh | Secure remote access |
+| openssh-client | Secure remote access (client) |
 | nftables | Modern firewall framework |
 | fail2ban | Intrusion prevention via log monitoring |
-| ca-certificates-utils | TLS certificate management |
+| clamav | Antivirus scanning |
+| chkrootkit | Rootkit detection |
 
-## Build
+### Termux Integration
 
-### Prerequisites (on Arch Linux host)
-
-```bash
-sudo pacman -S archiso mkinitcpio-archiso edk2-ovmf qemu-desktop
-```
-
-### Build
-
-```bash
-# Build the ISO
-sudo ./build.sh
-
-# Or build manually
-sudo mkarchiso -v -w /tmp/madel-work -o ./out .
-
-# With custom output directory
-sudo OUTPUT_DIR=/path/to/output ./build.sh
-```
-
-Output is placed in `./out/madel-*.iso`.
-
-### Testing
-
-```bash
-# Test with QEMU
-run_archiso -i out/madel-*.iso
-
-# Manual QEMU test
-qemu-system-x86_64 -accel kvm \
-    -m 4G \
-    -cdrom out/madel-*.iso \
-    -boot d
-```
-
-## Verification
-
-```bash
-# Verify build artifacts
-ls -lh out/
-file out/madel-*.iso
-
-# Inspect rootfs contents
-unsquashfs -l out/madel-*.iso
-```
+- PRoot-compatible (no systemd required for base functionality)
+- ARM64 optimized for Android devices
+- Lightweight base image for mobile use
 
 ## Project Structure
 
 ```
-madel/
-├── profiledef.sh               # archiso profile definition
-├── packages.x86_64             # Package list
-├── pacman.conf                 # Build-time pacman config
-├── build.sh                    # Build script
-├── airootfs/                   # Root filesystem overlay
-│   ├── etc/
-│   │   ├── locale.gen          # Thai + English locales
-│   │   ├── locale.conf         # Default: th_TH.UTF-8
-│   │   ├── vconsole.conf       # Thai keyboard map
-│   │   ├── environment         # Fcitx5 IM env vars
-│   │   ├── os-release          # Custom OS branding
-│   │   ├── pacman.d/
-│   │   │   ├── hooks/
-│   │   │   │   └── locale-gen.hook
-│   │   │   └── mirrorlist      # Asia-optimized mirrors
-│   │   ├── mkinitcpio.conf.d/
-│   │   │   └── archiso.conf
-│   │   ├── fonts/conf.d/
-│   │   │   └── 99-thai-render.conf  # Thai font rendering config
-│   │   └── systemd/system/
-│   │       └── getty@tty1.service.d/
-│   │           └── autologin.conf
-│   └── root/
-│       ├── .bashrc             # Thai-enabled terminal
-│       └── .config/fcitx5/     # Thai input method config
-├── syslinux/                   # BIOS boot config
-│   └── syslinux.cfg
-├── grub/                       # GRUB config (UEFI)
-│   └── grub.cfg
-└── efiboot/                    # systemd-boot config (UEFI)
-    ├── loader.conf
-    └── entries/
-        └── archiso.conf
+monoshine/
+├── README.md              # This file
+├── build.sh               # Build script (debootstrap-based)
+├── packages.list          # Additional packages to install
+├── AGENTS.md              # Development guide
+├── release-notes.md       # Release notes template
+├── .gitignore
+├── .github/
+│   └── workflows/
+│       ├── build.yml      # CI: Build tarball for multiple arches
+│       ├── test.yml       # CI: Test built rootfs
+│       └── release.yml    # CI: Create GitHub Release
+├── etc/
+│   ├── apt/
+│   │   └── sources.list   # Debian sources
+│   ├── locale.gen         # Thai + English locales
+│   ├── environment        # Env vars (Thai locale, ibus IM)
+│   └── fonts/
+│       └── 99-thai.conf   # Fontconfig Thai rendering config
+└── termux-boot/
+    └── start-monoshine.sh # Termux boot script
 ```
 
 ## License
