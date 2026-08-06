@@ -1,0 +1,46 @@
+name: Release MAD EL OS ISO
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - 'release*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-22.04
+    container:
+      image: docker.io/library/archlinux:latest
+      options: --privileged
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          pacman -Sy --noconfirm --needed archiso edk2-ovmf squashfs-tools
+
+      - name: Build ISO
+        env:
+          OUTPUT_DIR: out
+          WORK_DIR: /tmp/madel-work
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Verify output
+        run: |
+          ls -lh out/
+          file out/madel-*.iso
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/madel-*.iso
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
