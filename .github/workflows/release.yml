@@ -1,4 +1,4 @@
-name: Release MAD EL OS ISO
+name: Release monoshine
 
 on:
   push:
@@ -9,22 +9,23 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-22.04
-    container:
-      image: docker.io/library/archlinux:latest
-      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, armhf, amd64]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
-          pacman -Sy --noconfirm --needed archiso edk2-ovmf squashfs-tools
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq debootstrap qemu-user-static xz-utils
 
-      - name: Build ISO
+      - name: Build monoshine (${{ matrix.arch }})
         env:
-          OUTPUT_DIR: out
-          WORK_DIR: /tmp/madel-work
+          DEBIAN_ARCH: ${{ matrix.arch }}
         run: |
           chmod +x build.sh
           ./build.sh
@@ -32,12 +33,12 @@ jobs:
       - name: Verify output
         run: |
           ls -lh out/
-          file out/madel-*.iso
+          file out/monoshine-${{ matrix.arch }}.tar.xz
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: out/madel-*.iso
+          files: out/monoshine-${{ matrix.arch }}.tar.xz
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           body_path: release-notes.md
