@@ -1,0 +1,95 @@
+# monoshine - Package list
+# Debian-based Termux distro with Thai language support
+
+# Base system
+bash
+coreutils
+dash
+diffutils
+dpkg
+findutils
+grep
+gzip
+hostnames
+init-system-helpers
+login
+ncurses-base
+ncurses-bin
+passwd
+procps
+sed
+sensible-utils
+tar
+util-linux
+xz-utils
+
+# Package management
+apt
+apt-utils
+ca-certificates
+
+# Essential tools for Termux
+rsync
+wget
+curl
+nano
+vim-tiny
+less
+tmux
+screen
+
+# Network and system tools
+iproute2
+net-tools
+iputils-ping
+iputils-tracepath
+netcat-openbsd
+openssh-client
+dhcpcd5
+dnsutils
+
+# Thai language support
+locales
+locales-all
+thai-language-data
+libthai0
+libthai-dev
+fonts-noto-core
+fonts-noto-extra
+fonts-noto-ui-core
+fonts-noto-ui-extra
+console-setup
+console-data
+keyboard-configuration
+
+# Input method
+ibus
+ibus-libthai
+libharfbuzz-dev
+
+# Security tools
+nmap
+rkhunter
+lynis
+gnupg
+gnupg2
+nftables
+fail2ban
+clamav
+chkrootkit
+
+# Development
+python3
+python3-pip
+build-essential
+pkg-config
+
+# Utility
+htop
+tree
+unzip
+zip
+
+# Documentation
+manpages
+manpages-dev
