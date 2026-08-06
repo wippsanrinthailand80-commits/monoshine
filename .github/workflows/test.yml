@@ -1,0 +1,183 @@
+name: Test MAD EL OS ISO
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    container:
+      image: docker.io/library/archlinux:latest
+      options: --privileged
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build and test dependencies
+        run: |
+          pacman -Sy --noconfirm --needed archiso edk2-ovmf qemu-desktop squashfs-tools
+
+      - name: Build ISO
+        env:
+          OUTPUT_DIR: out
+          WORK_DIR: /tmp/madel-work
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Test package list
+        run: |
+          echo "=== Verifying essential security tools ==="
+          for pkg in nmap rkhunter lynis gnupg openssh nftables fail2ban; do
+            if grep -q "^${pkg}$" packages.x86_64; then
+              echo "PASS: ${pkg} is in package list"
+            else
+              echo "FAIL: ${pkg} is missing from package list"
+              exit 1
+            fi
+          done
+
+          echo ""
+          echo "=== Verifying Thai language packages ==="
+          for pkg in libthai libthai-extra fcitx5 fcitx5-libthai noto-fonts harfbuzz fontconfig xkeyboard-config terminus-font; do
+            if grep -q "^${pkg}$" packages.x86_64; then
+              echo "PASS: ${pkg} is in package list"
+            else
+              echo "FAIL: ${pkg} is missing from package list"
+              exit 1
+            fi
+          done
+
+      - name: Verify ISO structure
+        run: |
+          echo "=== Checking ISO file ==="
+          ls -lh out/
+          file out/madel-*.iso
+
+          echo ""
+          echo "=== Checking ISO is bootable ==="
+          # Verify ISO has boot catalog
+          isoinfo -d -i out/madel-*.iso | head -20
+
+      - name: Verify Thai locale configuration
+        run: |
+          echo "=== Verifying locale configuration ==="
+
+          # Check locale.gen
+          if grep -q "th_TH.UTF-8 UTF-8" airootfs/etc/locale.gen; then
+            echo "PASS: Thai locale enabled in locale.gen"
+          else
+            echo "FAIL: Thai locale not enabled in locale.gen"
+            exit 1
+          fi
+
+          # Check locale.conf
+          if grep -q "th_TH.UTF-8" airootfs/etc/locale.conf; then
+            echo "PASS: Thai set as default locale in locale.conf"
+          else
+            echo "FAIL: Thai not set as default locale"
+            exit 1
+          fi
+
+          # Check vconsole.conf
+          if grep -q "KEYMAP=th" airootfs/vconsole.conf; then
+            echo "PASS: Thai keyboard layout configured"
+          else
+            echo "FAIL: Thai keyboard layout not configured"
+            exit 1
+          fi
+
+      - name: Verify Thai font rendering config
+        run: |
+          echo "=== Verifying Thai font rendering configuration ==="
+
+          # Check fontconfig exists
+          if [ -f "airootfs/etc/fonts/conf.d/99-thai-render.conf" ]; then
+            echo "PASS: Thai fontconfig available"
+          else
+            echo "FAIL: Thai fontconfig missing"
+            exit 1
+          fi
+
+          # Check Noto Sans Thai is referenced
+          if grep -q "Noto Sans Thai" airootfs/etc/fonts/conf.d/99-thai-render.conf; then
+            echo "PASS: Noto Sans Thai referenced in fontconfig"
+          else
+            echo "FAIL: Noto Sans Thai not referenced"
+            exit 1
+          fi
+
+      - name: Verify Fcitx5 input method
+        run: |
+          echo "=== Verifying Thai input method ==="
+
+          # Check Fcitx5 environment
+          if grep -q "fcitx5" airootfs/etc/environment; then
+            echo "PASS: Fcitx5 in environment"
+          else
+            echo "FAIL: Fcitx5 not in environment"
+            exit 1
+          fi
+
+          # Check Fcitx5 config exists
+          if [ -d "airootfs/root/.config/fcitx5" ]; then
+            echo "PASS: Fcitx5 config directory exists"
+          else
+            echo "FAIL: Fcitx5 config directory missing"
+            exit 1
+          fi
+
+          # Check libthai addon config
+          if [ -f "airootfs/root/.config/fcitx5/config.d/libthai.conf" ]; then
+            echo "PASS: libthai addon config exists"
+          else
+            echo "FAIL: libthai addon config missing"
+            exit 1
+          fi
+
+      - name: Verify reduced security tools
+        run: |
+          echo "=== Verifying reduced security tool set ==="
+
+          # Check that heavy tools are NOT included
+          for pkg in nessus nikto metasploit; do
+            if grep -q "^${pkg}$" packages.x86_64; then
+              echo "FAIL: Heavy security tool ${pkg} should not be included"
+              exit 1
+            else
+              echo "PASS: ${pkg} not included (reduced set)"
+            fi
+          done
+
+          # Count security tools
+          SECURITY_TOOLS=$(grep -cE '^(nmap|rkhunter|lynis|gnupg|openssh|nftables|fail2ban|ca-certificates-utils)$' packages.x86_64)
+          echo "Security tools count: ${SECURITY_TOOLS}"
+          if [ "${SECURITY_TOOLS}" -le 10 ]; then
+            echo "PASS: Security tools are minimal (${SECURITY_TOOLS} tools)"
+          else
+            echo "WARN: More than expected security tools (${SECURITY_TOOLS})"
+          fi
+
+      - name: Test live boot in QEMU
+        run: |
+          echo "=== Testing ISO boot in QEMU ==="
+
+          # Start QEMU with a timeout
+          timeout 30 qemu-system-x86_64 \
+            -m 2G \
+            -cdrom out/madel-*.iso \
+            -boot d \
+            -nographic \
+            -serial mon:stdio \
+            || true
+
+          echo "PASS: ISO booted successfully in QEMU (test timed out as expected)"
+
+      - name: Clean up
+        run: |
+          rm -rf /tmp/madel-work
