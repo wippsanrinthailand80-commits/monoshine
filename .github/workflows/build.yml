@@ -1,4 +1,4 @@
-name: Build MAD EL OS ISO
+name: Build monoshine distro
 
 on:
   push:
@@ -10,9 +10,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    container:
-      image: docker.io/library/archlinux:latest
-      options: --privileged
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, armhf, amd64]
 
     steps:
       - name: Checkout repository
@@ -20,12 +21,21 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pacman -Sy --noconfirm --needed archiso edk2-ovmf squashfs-tools
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq debootstrap qemu-user-static xz-utils
 
-      - name: Build ISO
+      - name: Set up qemu for cross-architecture builds
+        run: |
+          if [ "${{ matrix.arch }}" != "amd64" ]; then
+            echo "QEMU path: /usr/bin/qemu-${{ matrix.arch }}-static"
+            file /usr/bin/qemu-${{ matrix.arch }}-static
+          fi
+
+      - name: Build monoshine (${{ matrix.arch }})
         env:
+          DEBIAN_ARCH: ${{ matrix.arch }}
+          DEBIAN_SUITE: trixie
           OUTPUT_DIR: out
-          WORK_DIR: /tmp/madel-work
         run: |
           chmod +x build.sh
           ./build.sh
@@ -33,11 +43,24 @@ jobs:
       - name: Verify output
         run: |
           ls -lh out/
-          file out/madel-*.iso
+          file out/monoshine-${{ matrix.arch }}.tar.xz
+
+      - name: Verify tarball contents
+        run: |
+          echo "=== Checking tarball contents ==="
+          tar -tJf out/monoshine-${{ matrix.arch }}.tar.xz | head -30
+          echo "=== Checking key files in tarball ==="
+          for f in etc/hostname etc/locale.gen etc/environment etc/fonts/conf.d/99-thai.conf usr/local/bin/monoshine-info; do
+            if tar -tJf out/monoshine-${{ matrix.arch }}.tar.xz | grep -q "^$f$"; then
+              echo "PASS: $f found in tarball"
+            else
+              echo "FAIL: $f not found in tarball"
+              exit 1
+            fi
+          done
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: madel-iso
-          path: out/madel-*.iso
-          if-no-files-found: error
+          name: monoshine-${{ matrix.arch }}
+          path: out/monoshine-${{ matrix.arch }}.tar.xz
