@@ -38,7 +38,11 @@ jobs:
           mkdir -p /tmp/monoshine-test
           tar -xJf out/monoshine-${{ matrix.arch }}.tar.xz -C /tmp/monoshine-test
           ROOTFS=/tmp/monoshine-test
-          QEMU="/usr/bin/qemu-${{ matrix.arch }}-static"
+
+          # Copy qemu for cross-arch chroot
+          if [ "${{ matrix.arch }}" != "amd64" ]; then
+            sudo cp /usr/bin/qemu-${{ matrix.arch }}-static "$ROOTFS/usr/bin/"
+          fi
 
           echo "=== Checking essential files exist ==="
           for f in /etc/hostname /etc/locale.gen /etc/environment /etc/fonts/conf.d/99-thai.conf /usr/local/bin/monoshine-info; do
@@ -130,7 +134,8 @@ jobs:
 
           echo ""
           echo "=== Cleaning up ==="
-          rm -rf "$ROOTFS"
+          rm -f "$ROOTFS/usr/bin/qemu-"*
+          rm -rf /tmp/monoshine-test
 
           echo ""
           echo "=== All tests passed ==="
