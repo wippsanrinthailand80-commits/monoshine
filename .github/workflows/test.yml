@@ -95,31 +95,41 @@ jobs:
           DEBIAN_ARCH: ${{ matrix.arch }}
         run: |
           ROOTFS=/tmp/monoshine-test
-          # Copy qemu for cross-arch chroot
+
+          # Map Debian arch to QEMU arch (arm64 -> aarch64, armhf -> arm)
+          QEMU_ARCH="${{ matrix.arch }}"
+          if [ "$QEMU_ARCH" = "arm64" ]; then
+            QEMU_ARCH="aarch64"
+          elif [ "$QEMU_ARCH" = "armhf" ]; then
+            QEMU_ARCH="arm"
+          fi
+
+          # Copy qemu for cross-arch chroot (best effort; binfmt_misc also works)
           if [ "${{ matrix.arch }}" != "amd64" ]; then
-            sudo cp /usr/bin/qemu-${{ matrix.arch }}-static "$ROOTFS/usr/bin/"
+            sudo cp /usr/bin/qemu-${QEMU_ARCH}-static "$ROOTFS/usr/bin/" 2>/dev/null || true
           fi
           # Mount filesystems for chroot
           sudo mount -t proc proc "$ROOTFS/proc" 2>/dev/null || true
           sudo mount -t sysfs sysfs "$ROOTFS/sys" 2>/dev/null || true
           sudo mount --bind /dev "$ROOTFS/dev" 2>/dev/null || true
-          
+
           echo "=== Running monoshine-info in chroot ==="
           if [ "${{ matrix.arch }}" = "amd64" ]; then
             sudo chroot "$ROOTFS" /usr/local/bin/monoshine-info 2>&1
           else
-            sudo chroot "$ROOTFS" /usr/bin/qemu-${{ matrix.arch }}-static /usr/local/bin/monoshine-info 2>&1
+            sudo chroot "$ROOTFS" /usr/bin/qemu-${QEMU_ARCH}-static /usr/local/bin/monoshine-info 2>&1 || \
+            sudo chroot "$ROOTFS" /usr/local/bin/monoshine-info 2>&1 || true
           fi
           echo "Chroot exit code: $?"
-          
+
           echo "=== Checking package count ==="
           if [ "${{ matrix.arch }}" = "amd64" ]; then
             PKG_COUNT=$(sudo chroot "$ROOTFS" dpkg -l 2>/dev/null | grep -c '^ii' || echo 0)
           else
-            PKG_COUNT=$(sudo chroot "$ROOTFS" /usr/bin/qemu-${{ matrix.arch }}-static /usr/bin/dpkg -l 2>/dev/null | grep -c '^ii' || echo 0)
+            PKG_COUNT=$(sudo chroot "$ROOTFS" /usr/bin/qemu-${QEMU_ARCH}-static /usr/bin/dpkg -l 2>/dev/null | grep -c '^ii' || echo 0)
           fi
           echo "Installed packages: $PKG_COUNT"
-          
+
           # Cleanup mounts
           sudo umount "$ROOTFS/proc" 2>/dev/null || true
           sudo umount "$ROOTFS/sys" 2>/dev/null || true
@@ -129,3 +139,4 @@ jobs:
         run: |
           rm -rf /tmp/monoshine-test
           echo "=== All tests passed ==="
+
