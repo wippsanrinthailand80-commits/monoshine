@@ -16,6 +16,13 @@ OUTPUT_DIR="${OUTPUT_DIR:-./out}"
 PACKAGES_LIST="packages.list"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Use sudo if not running as root
+if [[ "$(id -u)" -eq 0 ]]; then
+    SUDO=""
+else
+    SUDO="sudo"
+fi
+
 log() {
     echo "[build] $*"
 }
@@ -23,7 +30,7 @@ log() {
 BUILD_DIR=$(mktemp -d)
 cleanup() {
     log "Cleaning up build directory: ${BUILD_DIR}"
-    rm -rf "${BUILD_DIR}"
+    $SUDO rm -rf "${BUILD_DIR}"
 }
 trap cleanup EXIT
 
@@ -52,43 +59,46 @@ copy_qemu() {
         qemu_binary="/usr/bin/qemu-${DEBIAN_ARCH}-static"
         if [[ -x "$qemu_binary" ]]; then
             log "Copying qemu-static for cross-architecture chroot"
-            cp "$qemu_binary" "${BUILD_DIR}/rootfs/usr/bin/"
+            $SUDO cp "$qemu_binary" "${BUILD_DIR}/rootfs/usr/bin/"
         fi
     fi
 }
 
 mount_chroot() {
     local rootfs="${BUILD_DIR}/rootfs"
-    mount -t proc proc "${rootfs}/proc" 2>/dev/null || true
-    mount -t sysfs sysfs "${rootfs}/sys" 2>/dev/null || true
-    mount -t devtmpfs devtmpfs "${rootfs}/dev" 2>/dev/null || true
-    mount -o bind /dev "${rootfs}/dev" 2>/dev/null || true
+    $SUDO mount -t proc proc "${rootfs}/proc" 2>/dev/null || true
+    $SUDO mount -t sysfs sysfs "${rootfs}/sys" 2>/dev/null || true
+    $SUDO mount -o bind /dev "${rootfs}/dev" 2>/dev/null || true
+    $SUDO mount -o bind /run "${rootfs}/run" 2>/dev/null || true
 }
 
 umount_chroot() {
     local rootfs="${BUILD_DIR}/rootfs"
-    umount "${rootfs}/dev" 2>/dev/null || true
-    umount "${rootfs}/proc" 2>/dev/null || true
-    umount "${rootfs}/sys" 2>/dev/null || true
+    $SUDO umount "${rootfs}/run" 2>/dev/null || true
+    $SUDO umount "${rootfs}/dev" 2>/dev/null || true
+    $SUDO umount "${rootfs}/proc" 2>/dev/null || true
+    $SUDO umount "${rootfs}/sys" 2>/dev/null || true
 }
 
 bootstrap_base() {
     log "Bootstrapping Debian ${DEBIAN_SUITE} (${DEBIAN_ARCH})..."
     local rootfs="${BUILD_DIR}/rootfs"
-    mkdir -p "${rootfs}/dev" "${rootfs}/proc" "${rootfs}/sys" "${rootfs}/tmp"
+    $SUDO mkdir -p "${rootfs}/dev" "${rootfs}/proc" "${rootfs}/sys" "${rootfs}/tmp" "${rootfs}/run"
 
-    debootstrap --arch="${DEBIAN_ARCH}" --foreign --include=ca-certificates,apt,dpkg "${DEBIAN_SUITE}" "${rootfs}" "http://deb.debian.org/debian"
+    $SUDO debootstrap --arch="${DEBIAN_ARCH}" --foreign --include=ca-certificates,apt,dpkg "${DEBIAN_SUITE}" "${rootfs}" "http://deb.debian.org/debian"
     copy_qemu
 
     log "Running debootstrap second stage..."
-    chroot "${rootfs}" /debootstrap/debootstrap --second-stage
+    $SUDO chroot "${rootfs}" /debootstrap/debootstrap --second-stage
+
     mount_chroot
 
     log "Configuring apt..."
-    cp "${SCRIPT_DIR}/etc/apt/sources.list" "${rootfs}/etc/apt/sources.list"
-    chroot "${rootfs}" apt-get update -qq
-    chroot "${rootfs}" apt-get upgrade -y -qq
+    $SUDO cp "${SCRIPT_DIR}/etc/apt/sources.list" "${rootfs}/etc/apt/sources.list"
+    $SUDO chroot "${rootfs}" apt-get update -qq
+    $SUDO chroot "${rootfs}" apt-get upgrade -y -qq
 
+    umount_chroot
     log "Base system bootstrapped successfully."
 }
 
@@ -104,12 +114,14 @@ install_packages() {
 
     if [[ ${#pkgs[@]} -gt 0 ]]; then
         log "Installing ${#pkgs[@]} packages..."
-        chroot "${rootfs}" apt-get install -y --no-install-recommends -qq "${pkgs[@]}" || {
-            log "WARNING: Some packages failed to install"
-            chroot "${rootfs}" apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 || true
+        mount_chroot
+        $SUDO chroot "${rootfs}" apt-get install -y --no-install-recommends -qq "${pkgs[@]}" || {
+            log "WARNING: Some packages failed to install, retrying..."
+            $SUDO chroot "${rootfs}" apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 || true
         }
-        chroot "${rootfs}" apt-get clean
-        rm -rf "${rootfs}/var/lib/apt/lists/"*
+        $SUDO chroot "${rootfs}" apt-get clean
+        $SUDO rm -rf "${rootfs}/var/lib/apt/lists/"*
+        umount_chroot
     fi
 
     log "Packages installed successfully."
@@ -120,34 +132,35 @@ configure_system() {
     local rootfs="${BUILD_DIR}/rootfs"
 
     log "Setting up locales..."
-    cp "${SCRIPT_DIR}/etc/locale.gen" "${rootfs}/etc/locale.gen"
-    chroot "${rootfs}" locale-gen || log "WARNING: locale-gen failed"
+    $SUDO cp "${SCRIPT_DIR}/etc/locale.gen" "${rootfs}/etc/locale.gen"
+    $SUDO chroot "${rootfs}" locale-gen || log "WARNING: locale-gen failed"
 
     log "Setting up environment..."
-    cp "${SCRIPT_DIR}/etc/environment" "${rootfs}/etc/environment"
+    $SUDO cp "${SCRIPT_DIR}/etc/environment" "${rootfs}/etc/environment"
 
-    echo "monoshine" > "${rootfs}/etc/hostname"
+    $SUDO sh -c "echo 'monoshine' > ${rootfs}/etc/hostname"
 
     log "Setting up font configuration..."
-    mkdir -p "${rootfs}/etc/fonts/conf.d"
-    cp "${SCRIPT_DIR}/etc/fonts/99-thai.conf" "${rootfs}/etc/fonts/conf.d/99-thai.conf"
+    $SUDO mkdir -p "${rootfs}/etc/fonts/conf.d"
+    $SUDO cp "${SCRIPT_DIR}/etc/fonts/99-thai.conf" "${rootfs}/etc/fonts/conf.d/99-thai.conf"
 
-    echo 'root:' | chroot "${rootfs}" chpasswd || true
+    $SUDO sh -c "echo 'root:' | chroot ${rootfs} chpasswd" || true
 
-    mkdir -p "${rootfs}/tmp"
-    chmod 1777 "${rootfs}/tmp"
+    $SUDO mkdir -p "${rootfs}/tmp"
+    $SUDO chmod 1777 "${rootfs}/tmp"
 
     log "Installing info scripts..."
-    mkdir -p "${rootfs}/usr/local/bin"
-    cat > "${rootfs}/usr/local/bin/monoshine-info" << 'INFOSCRIPT'
+    $SUDO mkdir -p "${rootfs}/usr/local/bin"
+    local inst_script="${BUILD_DIR}/monoshine-info"
+    cat > "${inst_script}" << 'INSTEOF'
 #!/bin/sh
 echo "monoshine - Debian-based Termux distro"
 echo "Architecture: $(uname -m)"
 locale 2>/dev/null || true
-INFOSCRIPT
-    chmod +x "${rootfs}/usr/local/bin/monoshine-info"
+INSTEOF
+    $SUDO cp "${inst_script}" "${rootfs}/usr/local/bin/monoshine-info"
+    $SUDO chmod +x "${rootfs}/usr/local/bin/monoshine-info"
 
-    umount_chroot
     log "System configured successfully."
 }
 
@@ -158,12 +171,13 @@ package_distro() {
 
     local tarball="${SCRIPT_DIR}/${OUTPUT_DIR}/${DISTRO_NAME}-${DEBIAN_ARCH}.tar.xz"
 
-    rm -f "${rootfs}/usr/bin/qemu-"*
-    rm -rf "${rootfs}/debootstrap"
-    rm -rf "${rootfs}/var/lib/apt/lists"
-    rm -rf "${rootfs}/usr/share/doc" "${rootfs}/usr/share/man" "${rootfs}/usr/share/info"
+    $SUDO rm -f "${rootfs}/usr/bin/qemu-"*
+    $SUDO rm -rf "${rootfs}/debootstrap"
+    $SUDO rm -rf "${rootfs}/var/lib/apt/lists"
+    $SUDO rm -rf "${rootfs}/usr/share/doc" "${rootfs}/usr/share/man" "${rootfs}/usr/share/info"
 
-    tar -cJf "${tarball}" -C "${rootfs}" .
+    $SUDO tar -cJf "${tarball}" -C "${rootfs}" .
+    $SUDO chown "$(id -u):$(id -g)" "${tarball}"
 
     local size
     size="$(du -h "${tarball}" | cut -f1)"
