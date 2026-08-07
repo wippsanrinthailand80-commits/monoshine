@@ -1,0 +1,30 @@
+# Build outputs
+out/
+work/
+/tmp/madel-work
+
+# ISO files
+*.iso
+
+# Tarball outputs
+*.tar.xz
+*.tar.gz
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build temp
+*.tmp
