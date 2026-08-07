@@ -174,6 +174,7 @@ package_distro() {
     $SUDO rm -f "${rootfs}/usr/bin/qemu-"*
     $SUDO rm -rf "${rootfs}/debootstrap"
     $SUDO rm -rf "${rootfs}/var/lib/apt/lists"
+    $SUDO rm -rf "${rootfs}/dev"
     $SUDO rm -rf "${rootfs}/usr/share/doc" "${rootfs}/usr/share/man" "${rootfs}/usr/share/info"
 
     $SUDO tar -C "${rootfs}" -cJf "${tarball}" .
