@@ -1,4 +1,5 @@
 # monoshine - Package list for Debian-based Termux distro
+# Only packages confirmed to exist in Debian trixie
 
 # Base system
 bash
@@ -9,7 +10,7 @@ dpkg
 findutils
 grep
 gzip
-hostnames
+hostname
 init-system-helpers
 login
 ncurses-base
@@ -40,7 +41,8 @@ tmux
 screen
 tree
 htop
-tree
+unzip
+zip
 
 # Network and system tools
 iproute2
@@ -54,27 +56,22 @@ dnsutils
 
 # Thai language support
 locales
-thai-language-data
-libthai0
-libthai-dev
 fonts-noto-core
 fonts-noto-extra
-fonts-noto-ui-core
-fonts-noto-ui-extra
-fonts-dejavu
 fonts-noto-mono
+fonts-dejavu
 console-setup
 console-data
 keyboard-configuration
 fontconfig
 libharfbuzz0b
-libharfbuzz-icu0b
+libharfbuzz-icu0b1
+libthai0
+libdatrie1
 
 # Input method
 ibus
 ibus-libthai
-ibus-clutter
-ibus-gtk3
 
 # Security tools (reduced set)
 nmap
@@ -86,17 +83,12 @@ nftables
 fail2ban
 clamav
 chkrootkit
-ca-certificates-utils
 
 # Development
 python3
 python3-pip
 build-essential
 pkg-config
-
-# Archive tools
-unzip
-zip
 
 # Documentation
 manpages
