@@ -112,6 +112,8 @@ jobs:
 
           echo ""
           echo "=== Testing chroot execution ==="
+          # Mount /proc for chroot
+          sudo mount -t proc proc "$ROOTFS/proc" 2>/dev/null || true
           if [ "${{ matrix.arch }}" = "amd64" ]; then
             sudo chroot "$ROOTFS" /usr/local/bin/monoshine-info
           else
@@ -131,6 +133,9 @@ jobs:
             exit 1
           fi
           echo "PASS: Sufficient packages installed ($PKG_COUNT)"
+
+          # Unmount proc
+          sudo umount "$ROOTFS/proc" 2>/dev/null || true
 
           echo ""
           echo "=== Cleaning up ==="
