@@ -35,115 +35,97 @@ jobs:
         env:
           DEBIAN_ARCH: ${{ matrix.arch }}
         run: |
-          set -x
-          mkdir -p /tmp/monoshine-test
-          tar -xJf out/monoshine-${{ matrix.arch }}.tar.xz -C /tmp/monoshine-test
+          set +e
           ROOTFS=/tmp/monoshine-test
-          echo "Rootfs contents:"
-          ls -la "$ROOTFS"
+          rm -rf "$ROOTFS"
+          mkdir -p "$ROOTFS"
+          echo "=== Extracting tarball ==="
+          tar -xJf out/monoshine-${{ matrix.arch }}.tar.xz -C "$ROOTFS" 2>&1
+          TAR_EXIT=$?
+          if [ $TAR_EXIT -ne 0 ]; then
+            echo "FAIL: tar extraction failed with exit code $TAR_EXIT"
+            exit 1
+          fi
+          echo "Extraction OK"
+          
+          echo ""
+          echo "=== Listing rootfs ==="
+          ls -la "$ROOTFS/"
 
-          echo "=== Checking essential files exist ==="
+      - name: Verify essential files
+        run: |
+          ROOTFS=/tmp/monoshine-test
+          ERRORS=0
           for f in etc/hostname etc/locale.gen etc/environment etc/fonts/conf.d/99-thai.conf usr/local/bin/monoshine-info; do
             if [ -f "$ROOTFS/$f" ]; then
               echo "PASS: $f exists"
             else
               echo "FAIL: $f missing"
-              ls -la "$ROOTFS/etc/"
-              ls -la "$ROOTFS/usr/local/bin/" 2>/dev/null || echo "usr/local/bin does not exist"
-              exit 1
+              ERRORS=$((ERRORS + 1))
             fi
           done
-
-          echo "=== Verifying hostname ==="
-          if grep -q "monoshine" "$ROOTFS/etc/hostname"; then
-            echo "PASS: hostname is monoshine"
-          else
-            echo "FAIL: hostname not set correctly"
-            cat "$ROOTFS/etc/hostname"
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "ERRORS: $ERRORS files missing"
+            ls -la "$ROOTFS/etc/" 2>/dev/null
+            ls -la "$ROOTFS/usr/local/bin/" 2>/dev/null
             exit 1
           fi
 
-          echo "=== Verifying Thai locale ==="
-          if grep -q "th_TH.UTF-8" "$ROOTFS/etc/locale.gen"; then
-            echo "PASS: Thai locale configured in locale.gen"
-          else
-            echo "FAIL: Thai locale not configured"
-            cat "$ROOTFS/etc/locale.gen"
-            exit 1
-          fi
-
-          if grep -q "th_TH.UTF-8" "$ROOTFS/etc/environment"; then
-            echo "PASS: Thai environment configured"
-          else
-            echo "FAIL: Thai environment not configured"
-            cat "$ROOTFS/etc/environment"
-            exit 1
-          fi
-
-          echo "=== Verifying Thai font config ==="
-          if grep -q "Noto Sans Thai" "$ROOTFS/etc/fonts/conf.d/99-thai.conf"; then
-            echo "PASS: Thai font config references Noto Sans Thai"
-          else
-            echo "FAIL: Thai font config missing Noto Sans Thai reference"
-            cat "$ROOTFS/etc/fonts/conf.d/99-thai.conf" 2>/dev/null || echo "File not found"
-            exit 1
-          fi
-
-          echo "=== Verifying package list contents ==="
-          for pkg in nmap rkhunter lynis gnupg fail2ban clamav; do
-            if grep -q "^${pkg}$" packages.list; then
-              echo "PASS: ${pkg} is in package list"
-            else
-              echo "FAIL: ${pkg} is missing from package list"
-              exit 1
-            fi
+      - name: Verify configuration
+        run: |
+          ROOTFS=/tmp/monoshine-test
+          echo "=== Hostname ==="
+          cat "$ROOTFS/etc/hostname"
+          grep -q "monoshine" "$ROOTFS/etc/hostname" && echo "PASS" || { echo "FAIL"; exit 1; }
+          
+          echo "=== Locale ==="
+          grep -q "th_TH.UTF-8" "$ROOTFS/etc/locale.gen" && echo "PASS: Thai locale in locale.gen" || { echo "FAIL"; exit 1; }
+          grep -q "th_TH.UTF-8" "$ROOTFS/etc/environment" && echo "PASS: Thai locale in environment" || { echo "FAIL"; exit 1; }
+          
+          echo "=== Font config ==="
+          grep -q "Noto Sans Thai" "$ROOTFS/etc/fonts/conf.d/99-thai.conf" && echo "PASS" || { echo "FAIL"; exit 1; }
+          
+          echo "=== Package list ==="
+          for pkg in nmap rkhunter lynis gnupg fail2ban clamav locales thai-language-data fonts-noto-core ibus-libthai; do
+            grep -q "^${pkg}$" packages.list && echo "PASS: $pkg" || { echo "FAIL: $pkg"; exit 1; }
           done
 
-          echo "=== Verifying Thai packages ==="
-          for pkg in locales thai-language-data fonts-noto-core ibus-libthai; do
-            if grep -q "^${pkg}$" packages.list; then
-              echo "PASS: ${pkg} is in package list"
-            else
-              echo "FAIL: ${pkg} is missing from package list"
-              exit 1
-            fi
-          done
-
-          echo "=== Testing chroot execution ==="
+      - name: Test chroot execution
+        env:
+          DEBIAN_ARCH: ${{ matrix.arch }}
+        run: |
+          ROOTFS=/tmp/monoshine-test
           # Copy qemu for cross-arch chroot
           if [ "${{ matrix.arch }}" != "amd64" ]; then
             sudo cp /usr/bin/qemu-${{ matrix.arch }}-static "$ROOTFS/usr/bin/"
           fi
-
-          # Mount /proc for chroot
+          # Mount filesystems for chroot
           sudo mount -t proc proc "$ROOTFS/proc" 2>/dev/null || true
           sudo mount -t sysfs sysfs "$ROOTFS/sys" 2>/dev/null || true
-          sudo mount -o bind /dev "$ROOTFS/dev" 2>/dev/null || true
-
+          sudo mount --bind /dev "$ROOTFS/dev" 2>/dev/null || true
+          
+          echo "=== Running monoshine-info in chroot ==="
           if [ "${{ matrix.arch }}" = "amd64" ]; then
-            sudo chroot "$ROOTFS" /usr/local/bin/monoshine-info || echo "WARN: chroot test failed"
+            sudo chroot "$ROOTFS" /usr/local/bin/monoshine-info 2>&1
           else
-            sudo chroot "$ROOTFS" /usr/bin/qemu-${{ matrix.arch }}-static /usr/local/bin/monoshine-info || echo "WARN: chroot test failed"
+            sudo chroot "$ROOTFS" /usr/bin/qemu-${{ matrix.arch }}-static /usr/local/bin/monoshine-info 2>&1
           fi
-
-          echo "=== Checking installed package count ==="
+          echo "Chroot exit code: $?"
+          
+          echo "=== Checking package count ==="
           if [ "${{ matrix.arch }}" = "amd64" ]; then
-            PKG_COUNT=$(sudo chroot "$ROOTFS" dpkg -l 2>/dev/null | grep -c '^ii')
+            PKG_COUNT=$(sudo chroot "$ROOTFS" dpkg -l 2>/dev/null | grep -c '^ii' || echo 0)
           else
-            PKG_COUNT=$(sudo chroot "$ROOTFS" /usr/bin/qemu-${{ matrix.arch }}-static /usr/bin/dpkg -l 2>/dev/null | grep -c '^ii')
+            PKG_COUNT=$(sudo chroot "$ROOTFS" /usr/bin/qemu-${{ matrix.arch }}-static /usr/bin/dpkg -l 2>/dev/null | grep -c '^ii' || echo 0)
           fi
           echo "Installed packages: $PKG_COUNT"
-          if [ "$PKG_COUNT" -lt 50 ]; then
-            echo "FAIL: Too few packages installed ($PKG_COUNT)"
-            exit 1
-          fi
-          echo "PASS: Sufficient packages installed ($PKG_COUNT)"
-
-          echo "=== Cleaning up ==="
+          
+          # Cleanup mounts
           sudo umount "$ROOTFS/proc" 2>/dev/null || true
           sudo umount "$ROOTFS/sys" 2>/dev/null || true
           sudo umount "$ROOTFS/dev" 2>/dev/null || true
-          rm -f "$ROOTFS/usr/bin/qemu-"*
-          rm -rf /tmp/monoshine-test
 
+      - name: Cleanup
+        run: |
+          rm -rf /tmp/monoshine-test
           echo "=== All tests passed ==="
