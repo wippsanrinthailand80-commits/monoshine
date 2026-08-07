@@ -86,7 +86,7 @@ jobs:
           grep -q "Noto Sans Thai" "$ROOTFS/etc/fonts/conf.d/99-thai.conf" && echo "PASS" || { echo "FAIL"; exit 1; }
           
           echo "=== Package list ==="
-          for pkg in nmap rkhunter lynis gnupg fail2ban clamav locales thai-language-data fonts-noto-core ibus-libthai; do
+          for pkg in nmap rkhunter lynis gnupg fail2ban clamav locales fonts-noto-core ibus-libthai libthai0; do
             grep -q "^${pkg}$" packages.list && echo "PASS: $pkg" || { echo "FAIL: $pkg"; exit 1; }
           done
 
