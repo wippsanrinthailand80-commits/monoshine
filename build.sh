@@ -176,7 +176,7 @@ package_distro() {
     $SUDO rm -rf "${rootfs}/var/lib/apt/lists"
     $SUDO rm -rf "${rootfs}/usr/share/doc" "${rootfs}/usr/share/man" "${rootfs}/usr/share/info"
 
-    $SUDO tar -cJf "${tarball}" -C "${rootfs}" .
+    $SUDO tar -C "${rootfs}" -cJf "${tarball}" .
     $SUDO chown "$(id -u):$(id -g)" "${tarball}"
 
     local size
