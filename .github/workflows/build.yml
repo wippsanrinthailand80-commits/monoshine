@@ -51,7 +51,7 @@ jobs:
           tar -tJf out/monoshine-${{ matrix.arch }}.tar.xz | head -30
           echo "=== Checking key files in tarball ==="
           for f in etc/hostname etc/locale.gen etc/environment etc/fonts/conf.d/99-thai.conf usr/local/bin/monoshine-info; do
-            if tar -tJf out/monoshine-${{ matrix.arch }}.tar.xz | grep -q "^$f$"; then
+            if tar -tJf out/monoshine-${{ matrix.arch }}.tar.xz | grep -q "${f}$"; then
               echo "PASS: $f found in tarball"
             else
               echo "FAIL: $f not found in tarball"
